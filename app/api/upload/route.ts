@@ -62,6 +62,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to save document metadata" }, { status: 500 })
     }
 
+    // -----------------------------
+    // Call local backend API
+    // -----------------------------
+    const backendForm = new FormData();
+    backendForm.append("file", file);
+
+    const response = await fetch(`${process.env.AI_QNA_ENDPOINT}/upload`, {
+      method: "POST",
+      body: backendForm, // <-- no JSON headers here
+    });
+
+    if (!response.ok) {
+      throw new Error(`Backend returned ${response.status}`);
+    }
+
     return NextResponse.json({ success: true, message: "File uploaded successfully" })
   } catch (error) {
     console.error("[v0] Upload error:", error)
