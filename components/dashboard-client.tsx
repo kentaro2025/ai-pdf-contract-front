@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import Link from "next/link"
+import Navigation from "@/components/navigation"
+import ConfirmDialog from "@/components/confirm-dialog"
 
 interface Document {
   id: string
@@ -46,6 +48,8 @@ interface DashboardClientProps {
 export default function DashboardClient({ user, documents, qaHistory, docsError, qaError }: DashboardClientProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState("")
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null)
   const router = useRouter()
   const supabase = getSupabaseBrowserClient()
 
@@ -55,16 +59,19 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
     router.refresh()
   }
 
-  const handleDeleteDocument = async (documentId: string) => {
-    if (!confirm("Are you sure you want to delete this document? This will also delete all associated Q&A history.")) {
-      return
-    }
+  const handleDeleteClick = (documentId: string) => {
+    setDocumentToDelete(documentId)
+    setConfirmDialogOpen(true)
+  }
 
-    setDeletingId(documentId)
+  const handleDeleteConfirm = async () => {
+    if (!documentToDelete) return
+
+    setDeletingId(documentToDelete)
     setError("")
 
     try {
-      const response = await fetch(`/api/documents/${documentId}`, {
+      const response = await fetch(`/api/documents/${documentToDelete}`, {
         method: "DELETE",
       })
 
@@ -78,6 +85,7 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
       setError(err.message || "Failed to delete document")
     } finally {
       setDeletingId(null)
+      setDocumentToDelete(null)
     }
   }
 
@@ -97,12 +105,13 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
     })
   }
 
-  const getInitials = (email: string) => {
+  const getInitials = (email: string | undefined) => {
+    if (!email) return "U"
     return email.substring(0, 2).toUpperCase()
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <div className="min-h-screen bg-pattern">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         <div className="container mx-auto px-4 py-4">
@@ -118,6 +127,8 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
             </div>
 
             <div className="flex items-center gap-3">
+              <Navigation showAuthButtons={false} />
+
               <Link href="/upload">
                 <Button className="bg-blue-600 hover:bg-blue-700 text-white">
                   <Upload className="mr-2 h-4 w-4" />
@@ -129,7 +140,7 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                     <Avatar>
-                      <AvatarFallback className="bg-blue-100 text-blue-700">{getInitials(user.email)}</AvatarFallback>
+                      <AvatarFallback className="bg-blue-100 text-blue-700">{getInitials(user?.email)}</AvatarFallback>
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
@@ -137,7 +148,7 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
                   <DropdownMenuLabel>
                     <div className="flex flex-col space-y-1">
                       <p className="text-sm font-medium">My Account</p>
-                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                      <p className="text-xs text-gray-500 truncate">{user?.email || "User"}</p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -262,7 +273,7 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleDeleteDocument(doc.id)}
+                            onClick={() => handleDeleteClick(doc.id)}
                             disabled={deletingId === doc.id}
                             className="h-8 text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
@@ -321,7 +332,7 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
                             <p className="text-xs text-gray-500 mt-1">{qa.documents.title}</p>
                           </div>
                         </div>
-                        <p className="text-sm text-gray-600 mt-2 line-clamp-2">{qa.answer}</p>
+                        <p className="text-sm text-gray-600 mt-2 line-clamp-2 whitespace-pre-wrap">{qa.answer}</p>
                         <p className="text-xs text-gray-400 mt-2">{formatDate(qa.created_at)}</p>
                       </div>
                     ))}
@@ -332,6 +343,17 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDialogOpen}
+        onOpenChange={setConfirmDialogOpen}
+        title="Delete Document"
+        description="Are you sure you want to delete this document? This will also delete all associated Q&A history. This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={handleDeleteConfirm}
+        variant="destructive"
+      />
     </div>
   )
 }

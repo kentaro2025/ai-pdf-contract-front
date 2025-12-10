@@ -41,7 +41,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
       documents={documents}
       selectedDocId={selectedDocId}
       initialQAHistory={qaHistory || []}
-      docsError={docsError?.message}
+      docsError={docsError as any}
     />
   )
 }

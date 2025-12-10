@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import Link from "next/link"
+import Navigation from "@/components/navigation"
 
 interface Document {
   id: string
@@ -32,8 +33,10 @@ interface Document {
 interface QAItem {
   id: string
   question: string
-  answer: string
+  answer: string | null
   created_at: string
+  isLoading?: boolean
+  error?: string
 }
 
 interface AskClientProps {
@@ -84,6 +87,21 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
     const userQuestion = question.trim()
     setQuestion("")
 
+    // Create a temporary ID for the loading question
+    const tempId = `temp-${Date.now()}`
+
+    // Add question immediately with loading state
+    setQaHistory((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        question: userQuestion,
+        answer: null,
+        created_at: new Date().toISOString(),
+        isLoading: true,
+      },
+    ])
+
     try {
       const response = await fetch("/api/ask", {
         method: "POST",
@@ -98,24 +116,51 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || "Failed to get answer")
+        const errorMessage =
+          response.status === 404
+            ? "Document not found. Please try selecting a different document."
+            : response.status === 401
+              ? "Unauthorized. Please log in again."
+              : data.error || "Failed to get answer. Please try again."
+        throw new Error(errorMessage)
       }
 
       const data = await response.json()
 
-      // Add to local state
-      setQaHistory((prev) => [
-        ...prev,
-        {
-          id: data.id,
-          question: userQuestion,
-          answer: data.answer,
-          created_at: new Date().toISOString(),
-        },
-      ])
+      if (!data.answer || data.answer.trim() === "") {
+        throw new Error("No answer received. The document may not be fully processed yet.")
+      }
+
+      // Update the question with the answer
+      setQaHistory((prev) =>
+        prev.map((qa) =>
+          qa.id === tempId
+            ? {
+                id: data.id,
+                question: userQuestion,
+                answer: data.answer,
+                created_at: new Date().toISOString(),
+                isLoading: false,
+              }
+            : qa
+        )
+      )
     } catch (err: any) {
-      setError(err.message || "Failed to get answer")
-      setQuestion(userQuestion) // Restore question on error
+      const errorMessage = err.message || "Failed to get answer"
+      setError(errorMessage)
+      
+      // Update the question with error state
+      setQaHistory((prev) =>
+        prev.map((qa) =>
+          qa.id === tempId
+            ? {
+                ...qa,
+                isLoading: false,
+                error: errorMessage,
+              }
+            : qa
+        )
+      )
     } finally {
       setLoading(false)
     }
@@ -128,7 +173,7 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
   const selectedDocument = documents.find((doc) => doc.id === currentDocId)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex flex-col">
+    <div className="min-h-screen bg-pattern flex flex-col">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         <div className="container mx-auto px-4 py-4">
@@ -150,7 +195,9 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
               </div>
             </div>
 
-            <DropdownMenu>
+            <div className="flex items-center gap-3">
+              <Navigation showAuthButtons={false} />
+              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar>
@@ -172,6 +219,7 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
           </div>
         </div>
       </header>
@@ -243,7 +291,16 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
                         <Bot className="w-4 h-4 text-indigo-600" />
                       </div>
                       <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]">
-                        <p className="text-sm text-gray-900 leading-relaxed">{qa.answer}</p>
+                        {qa.isLoading ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 text-gray-600 animate-spin" />
+                            <span className="text-sm text-gray-500">Thinking...</span>
+                          </div>
+                        ) : qa.error ? (
+                          <p className="text-sm text-red-600 leading-relaxed">{qa.error}</p>
+                        ) : qa.answer ? (
+                          <p className="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{qa.answer}</p>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -251,16 +308,6 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
               </>
             )}
 
-            {loading && (
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4 text-indigo-600" />
-                </div>
-                <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3">
-                  <Loader2 className="w-5 h-5 text-gray-600 animate-spin" />
-                </div>
-              </div>
-            )}
 
             <div ref={messagesEndRef} />
           </div>

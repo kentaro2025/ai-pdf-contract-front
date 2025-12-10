@@ -47,15 +47,19 @@ export async function POST(request: NextRequest) {
     } = supabase.storage.from("documents").getPublicUrl(fileName)
 
     // Save document metadata to database
-    const { error: dbError } = await supabase.from("documents").insert({
-      user_id: user.id,
-      title: file.name.replace(/\.pdf$/i, ""),
-      file_name: file.name,
-      file_size: file.size,
-      file_url: publicUrl,
-    })
+    const { data: documentData, error: dbError } = await supabase
+      .from("documents")
+      .insert({
+        user_id: user.id,
+        title: file.name.replace(/\.pdf$/i, ""),
+        file_name: file.name,
+        file_size: file.size,
+        file_url: publicUrl,
+      })
+      .select()
+      .single()
 
-    if (dbError) {
+    if (dbError || !documentData) {
       console.error("[v0] Database error:", dbError)
       // Try to delete the uploaded file if database insert fails
       await supabase.storage.from("documents").remove([fileName])
@@ -63,21 +67,44 @@ export async function POST(request: NextRequest) {
     }
 
     // -----------------------------
-    // Call local backend API
+    // Call backend API to ingest PDF into FAISS
     // -----------------------------
-    const backendForm = new FormData();
-    backendForm.append("file", file);
+    try {
+      // Create form data for backend upload
+      const backendFormData = new FormData()
+      backendFormData.append("file", file)
+      backendFormData.append("user_id", user.id)
+      backendFormData.append("document_id", documentData.id.toString())
+      backendFormData.append("title", documentData.title || file.name.replace(/\.pdf$/i, ""))
+      backendFormData.append("file_size", file.size.toString())
+      backendFormData.append("file_url", publicUrl)
 
-    const response = await fetch(`${process.env.AI_QNA_ENDPOINT}/upload`, {
-      method: "POST",
-      body: backendForm, // <-- no JSON headers here
-    });
+      const backendResponse = await fetch(process.env.AI_QNA_ENDPOINT + "/upload", {
+        method: "POST",
+        headers: {
+          "X-User-ID": user.id, // Pass user_id via header
+        },
+        body: backendFormData,
+      })
 
-    if (!response.ok) {
-      throw new Error(`Backend returned ${response.status}`);
+      if (!backendResponse.ok) {
+        const backendError = await backendResponse.json().catch(() => ({ error: "Unknown error" }))
+        console.error("[v0] Backend ingestion error:", backendError)
+        // Don't fail the entire upload if backend ingestion fails
+        // The file is already in Supabase, user can retry ingestion later
+      } else {
+        console.log("[v0] Backend ingestion successful")
+      }
+    } catch (backendError) {
+      console.error("[v0] Backend ingestion request failed:", backendError)
+      // Continue even if backend ingestion fails
     }
 
-    return NextResponse.json({ success: true, message: "File uploaded successfully" })
+    return NextResponse.json({
+      success: true,
+      message: "File uploaded successfully",
+      documentId: documentData.id,
+    })
   } catch (error) {
     console.error("[v0] Upload error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

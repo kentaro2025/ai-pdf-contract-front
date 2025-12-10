@@ -19,9 +19,10 @@ import {
   Shield,
 } from "lucide-react"
 import Link from "next/link"
+import Navigation from "@/components/navigation"
 
 interface AccountStatusProps {
-  user: any
+  user: any | null
   documentsCount: number
   questionsCount: number
   totalStorage: number
@@ -45,7 +46,8 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i]
   }
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | undefined | null) => {
+    if (!dateString) return "N/A"
     return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
@@ -56,7 +58,7 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+    <div className="min-h-screen bg-pattern">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         <div className="container mx-auto px-4 py-4">
@@ -80,10 +82,13 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
               </div>
             </div>
 
-            <Button variant="outline" onClick={handleLogout} className="text-red-600 hover:text-red-700 bg-transparent">
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </Button>
+            <div className="flex items-center gap-3">
+              <Navigation showAuthButtons={false} />
+              <Button variant="outline" onClick={handleLogout} className="text-red-600 hover:text-red-700 bg-transparent">
+                <LogOut className="mr-2 h-4 w-4" />
+                Logout
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -117,7 +122,7 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
                       <Mail className="w-4 h-4" />
                       <span>Email Address</span>
                     </div>
-                    <span className="text-sm font-medium text-gray-900">{user.email}</span>
+                    <span className="text-sm font-medium text-gray-900">{user?.email || "N/A"}</span>
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between py-2">
@@ -125,7 +130,9 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
                       <Calendar className="w-4 h-4" />
                       <span>Account Created</span>
                     </div>
-                    <span className="text-sm font-medium text-gray-900">{formatDate(user.created_at)}</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      {user?.created_at ? formatDate(user.created_at) : "N/A"}
+                    </span>
                   </div>
                   <Separator />
                   <div className="flex items-center justify-between py-2">
@@ -133,7 +140,7 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
                       <Shield className="w-4 h-4" />
                       <span>User ID</span>
                     </div>
-                    <span className="text-sm font-mono text-gray-900 text-xs">{user.id}</span>
+                    <span className="text-sm font-mono text-gray-900 text-xs">{user?.id || "N/A"}</span>
                   </div>
                 </div>
               </div>

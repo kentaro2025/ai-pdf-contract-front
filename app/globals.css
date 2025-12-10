@@ -123,3 +123,39 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Beautiful background pattern */
+.bg-pattern {
+  background-color: #f8fafc;
+  background-image: 
+    /* Medium dots - secondary pattern */
+    radial-gradient(circle at 2px 2px, rgba(99, 102, 241, 0.12) 2px, transparent 0);
+  background-size: 32px 32px;
+  background-position: 0 0;
+  position: relative;
+}
+
+.bg-pattern::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    /* Diagonal gradients for depth */
+    linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, transparent 70%),
+    linear-gradient(225deg, rgba(59, 130, 246, 0.06) 0%, transparent 70%),
+    linear-gradient(45deg, rgba(139, 92, 246, 0.04) 0%, transparent 70%),
+    /* Corner highlights */
+    radial-gradient(ellipse 800px 600px at top left, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse 800px 600px at bottom right, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse 600px 800px at top right, rgba(139, 92, 246, 0.06) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-pattern > * {
+  position: relative;
+  z-index: 1;
+}

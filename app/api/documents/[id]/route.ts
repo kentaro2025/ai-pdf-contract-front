@@ -39,6 +39,32 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       console.error("[v0] Storage deletion error:", storageError)
     }
 
+    // -----------------------------
+    // Delete from backend (FAISS vector store)
+    // -----------------------------
+    try {
+      const backendResponse = await fetch(
+        `${process.env.AI_QNA_ENDPOINT}/documents/${id}?user_id=${user.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            "X-User-ID": user.id,
+          },
+        }
+      )
+
+      if (!backendResponse.ok) {
+        const backendError = await backendResponse.json().catch(() => ({ error: "Unknown error" }))
+        console.error("[v0] Backend deletion error:", backendError)
+        // Continue with Supabase deletion even if backend deletion fails
+      } else {
+        console.log("[v0] Backend deletion successful")
+      }
+    } catch (backendError) {
+      console.error("[v0] Backend deletion request failed:", backendError)
+      // Continue with Supabase deletion even if backend deletion fails
+    }
+
     // Delete from database (this will cascade delete Q&A history)
     const { error: deleteError } = await supabase.from("documents").delete().eq("id", id).eq("user_id", user.id)
 

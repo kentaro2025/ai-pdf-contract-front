@@ -4,7 +4,7 @@ import { CheckCircle2, Database, Key, FileText } from "lucide-react"
 
 export default function SetupPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-pattern flex items-center justify-center p-4">
       <div className="w-full max-w-4xl space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-bold text-blue-900">Welcome to DocuMind AI</h1>

@@ -38,8 +38,15 @@ export async function POST(request: NextRequest) {
     // -----------------------------
     const response = await fetch(process.env.AI_QNA_ENDPOINT + "/query", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-ID": user.id, // Pass user_id via header
+      },
+      body: JSON.stringify({
+        question,
+        user_id: user.id, // Also include in body for compatibility
+        document_id: documentId, // Pass document_id to filter results
+      }),
     })
 
     if (!response.ok) {
