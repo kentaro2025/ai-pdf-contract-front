@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge"
 import { Check, FileText, ArrowLeft, Zap, Crown, Sparkles } from "lucide-react"
 import Navigation from "@/components/navigation"
+import { useCart, CartItem } from "@/contexts/cart-context"
 
 interface PricingClientProps {
   user: any | null
@@ -15,6 +16,7 @@ interface PricingClientProps {
 
 export default function PricingClient({ user }: PricingClientProps) {
   const router = useRouter()
+  const { addToCart } = useCart()
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly")
 
   const plans = [
@@ -35,7 +37,7 @@ export default function PricingClient({ user }: PricingClientProps) {
     },
     {
       name: "Basic",
-      price: { monthly: 9, yearly: 90 },
+      price: { monthly: 9.99, yearly: 99.99 },
       description: "For individuals and small teams",
       features: [
         "Up to 100 documents",
@@ -51,7 +53,7 @@ export default function PricingClient({ user }: PricingClientProps) {
     },
     {
       name: "Pro",
-      price: { monthly: 29, yearly: 290 },
+      price: { monthly: 19.99, yearly: 199.99 },
       description: "For power users and businesses",
       features: [
         "Unlimited documents",
@@ -69,11 +71,43 @@ export default function PricingClient({ user }: PricingClientProps) {
     },
   ]
 
-  const handleGetStarted = (planName: string) => {
-    if (user) {
-      router.push("/dashboard")
+  const handleGetStarted = async (plan: typeof plans[0]) => {
+    if (plan.price.monthly === 0) {
+      // Free plan - go directly to dashboard or signup
+      if (user) {
+        router.push("/dashboard")
+      } else {
+        router.push("/signup")
+      }
     } else {
-      router.push("/signup")
+      // Paid plan - check if user is logged in
+      if (!user) {
+        // Store the plan in sessionStorage to restore after login
+        const cartItem: CartItem = {
+          id: `${plan.name.toLowerCase()}-${billingPeriod}`,
+          name: plan.name,
+          price: plan.price[billingPeriod],
+          billingPeriod: billingPeriod,
+          description: plan.description,
+          features: plan.features,
+        }
+        sessionStorage.setItem("pendingSubscription", JSON.stringify(cartItem))
+        // Redirect to login with return URL
+        router.push("/login?redirect=/subscribe")
+        return
+      }
+      
+      // User is logged in - add to cart and proceed
+      const cartItem: CartItem = {
+        id: `${plan.name.toLowerCase()}-${billingPeriod}`,
+        name: plan.name,
+        price: plan.price[billingPeriod],
+        billingPeriod: billingPeriod,
+        description: plan.description,
+        features: plan.features,
+      }
+      addToCart(cartItem)
+      router.push("/subscribe")
     }
   }
 
@@ -138,7 +172,7 @@ export default function PricingClient({ user }: PricingClientProps) {
             return (
               <Card
                 key={plan.name}
-                className={`relative border-2 transition-all hover:shadow-lg ${
+                className={`relative border-2 transition-all hover:shadow-lg flex flex-col h-full ${
                   plan.popular
                     ? "border-purple-500 shadow-lg scale-105"
                     : "border-gray-200 hover:border-gray-300"
@@ -173,7 +207,7 @@ export default function PricingClient({ user }: PricingClientProps) {
                     )}
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-1">
                   <ul className="space-y-3">
                     {plan.features.map((feature, index) => (
                       <li key={index} className="flex items-start gap-2">
@@ -183,16 +217,20 @@ export default function PricingClient({ user }: PricingClientProps) {
                     ))}
                   </ul>
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="mt-auto">
                   <Button
-                    onClick={() => handleGetStarted(plan.name)}
+                    onClick={() => handleGetStarted(plan)}
                     className={`w-full ${
                       plan.popular
                         ? "bg-purple-600 hover:bg-purple-700 text-white"
                         : "bg-blue-600 hover:bg-blue-700 text-white"
                     }`}
                   >
-                    {plan.price.monthly === 0 ? "Get Started" : "Choose Plan"}
+                    {plan.price.monthly === 0
+                      ? "Subscribe to Free"
+                      : plan.name === "Basic"
+                        ? "Subscribe to Basic"
+                        : "Subscribe to Pro"}
                   </Button>
                 </CardFooter>
               </Card>

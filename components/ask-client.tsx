@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Textarea } from "@/components/ui/textarea"
-import { FileText, Send, Loader2, LogOut, ArrowLeft, Bot, User } from "lucide-react"
+import { FileText, Send, Loader2, LogOut, ArrowLeft, Bot, User, ChevronDown } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   DropdownMenu,
@@ -257,8 +257,8 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
         )}
 
         {/* Chat Messages */}
-        <Card className="flex-1 mb-4 border-gray-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <Card className="flex-1 mb-4 border-gray-200 shadow-sm overflow-hidden flex flex-col relative">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-20">
             {qaHistory.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -311,6 +311,20 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
 
             <div ref={messagesEndRef} />
           </div>
+
+          {/* Scroll to Bottom Button - Fixed at bottom center, always visible */}
+          {qaHistory.length > 0 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+              <Button
+                onClick={scrollToBottom}
+                className="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl border-2 border-white transition-all duration-200 hover:scale-110 cursor-pointer"
+                size="icon"
+                aria-label="Scroll to bottom"
+              >
+                <ChevronDown className="w-6 h-6" />
+              </Button>
+            </div>
+          )}
         </Card>
 
         {/* Input Form */}

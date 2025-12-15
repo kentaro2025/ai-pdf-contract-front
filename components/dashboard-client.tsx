@@ -6,7 +6,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { FileText, Upload, MessageSquare, LogOut, Trash2, Calendar, BarChart3, Loader2 } from "lucide-react"
+import { FileText, Upload, MessageSquare, LogOut, Trash2, Calendar, BarChart3, Loader2, User } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -151,6 +151,13 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
                       <p className="text-xs text-gray-500 truncate">{user?.email || "User"}</p>
                     </div>
                   </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <Link href="/account-status">
+                    <DropdownMenuItem className="cursor-pointer">
+                      <User className="mr-2 h-4 w-4" />
+                      Account Status
+                    </DropdownMenuItem>
+                  </Link>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />
@@ -322,8 +329,8 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    {qaHistory.map((qa) => (
+                  <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
+                    {qaHistory.slice(0, 5).map((qa) => (
                       <div key={qa.id} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                         <div className="flex items-start gap-2 mb-2">
                           <MessageSquare className="w-4 h-4 text-blue-600 mt-1 flex-shrink-0" />

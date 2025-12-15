@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, FileText } from "lucide-react"
 import Navigation from "@/components/navigation"
+import { useCart } from "@/contexts/cart-context"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -20,7 +21,9 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = getSupabaseBrowserClient()
+  const { addToCart } = useCart()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,8 +37,22 @@ export default function LoginPage() {
       })
 
       if (error) throw error
-      console.log("go to dashboard")
-      router.push("/dashboard")
+
+      // Restore pending subscription if exists
+      const pendingSubscription = sessionStorage.getItem("pendingSubscription")
+      if (pendingSubscription) {
+        try {
+          const cartItem = JSON.parse(pendingSubscription)
+          addToCart(cartItem)
+          sessionStorage.removeItem("pendingSubscription")
+        } catch (e) {
+          console.error("Failed to restore pending subscription", e)
+        }
+      }
+
+      // Redirect to the specified page or default to dashboard
+      const redirectTo = searchParams.get("redirect") || "/dashboard"
+      router.push(redirectTo)
       router.refresh()
     } catch (err: any) {
       setError(err.message || "Failed to login")
