@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Textarea } from "@/components/ui/textarea"
-import { FileText, Send, Loader2, LogOut, ArrowLeft, Bot, User, ChevronDown } from "lucide-react"
+import { FileText, Send, Loader2, LogOut, ArrowLeft, Bot, User, ChevronDown, ChevronUp, Copy, RotateCcw, Check } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   DropdownMenu,
@@ -53,16 +53,34 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
   const [error, setError] = useState("")
   const [qaHistory, setQaHistory] = useState<QAItem[]>(initialQAHistory)
   const [currentDocId, setCurrentDocId] = useState(selectedDocId)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const supabase = getSupabaseBrowserClient()
 
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+    window.scrollTo({
+      top: document.documentElement.scrollHeight,
+      behavior: 'smooth',
+    });
+  };
 
   useEffect(() => {
     scrollToBottom()
+  }, [qaHistory])
+
+  // Debug: Verify scroll container ref is attached
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      console.log("Scroll container ref attached:", scrollContainerRef.current)
+      console.log("Scroll height:", scrollContainerRef.current.scrollHeight)
+      console.log("Client height:", scrollContainerRef.current.clientHeight)
+    }
   }, [qaHistory])
 
   const handleLogout = async () => {
@@ -170,6 +188,101 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
     return email.substring(0, 2).toUpperCase()
   }
 
+  const handleCopyAnswer = async (answer: string, qaId: string) => {
+    try {
+      await navigator.clipboard.writeText(answer)
+      setCopiedId(qaId)
+      setTimeout(() => setCopiedId(null), 2000) // Reset after 2 seconds
+    } catch (err) {
+      console.error("Failed to copy:", err)
+    }
+  }
+
+  const handleTryAgain = async (questionText: string, qaId: string) => {
+    if (!questionText.trim() || loading) return
+
+    setError("")
+    setLoading(true)
+
+    // Create a temporary ID for the loading question
+    const tempId = `temp-${Date.now()}`
+
+    // Add question immediately with loading state at the end of history
+    setQaHistory((prev) => [
+      ...prev,
+      {
+        id: tempId,
+        question: questionText,
+        answer: null,
+        created_at: new Date().toISOString(),
+        isLoading: true,
+      },
+    ])
+
+    try {
+      const response = await fetch("/api/ask", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          documentId: currentDocId,
+          question: questionText,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        const errorMessage =
+          response.status === 404
+            ? "Document not found. Please try selecting a different document."
+            : response.status === 401
+              ? "Unauthorized. Please log in again."
+              : data.error || "Failed to get answer. Please try again."
+        throw new Error(errorMessage)
+      }
+
+      const data = await response.json()
+
+      if (!data.answer || data.answer.trim() === "") {
+        throw new Error("No answer received. The document may not be fully processed yet.")
+      }
+
+      // Update the question with the answer
+      setQaHistory((prev) =>
+        prev.map((qa) =>
+          qa.id === tempId
+            ? {
+                id: data.id,
+                question: questionText,
+                answer: data.answer,
+                created_at: new Date().toISOString(),
+                isLoading: false,
+              }
+            : qa
+        )
+      )
+    } catch (err: any) {
+      const errorMessage = err.message || "Failed to get answer"
+      setError(errorMessage)
+      
+      // Update the question with error state
+      setQaHistory((prev) =>
+        prev.map((qa) =>
+          qa.id === tempId
+            ? {
+                ...qa,
+                isLoading: false,
+                error: errorMessage,
+              }
+            : qa
+        )
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const selectedDocument = documents.find((doc) => doc.id === currentDocId)
 
   return (
@@ -258,7 +371,7 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
 
         {/* Chat Messages */}
         <Card className="flex-1 mb-4 border-gray-200 shadow-sm overflow-hidden flex flex-col relative">
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 pb-20">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6 pb-20">
             {qaHistory.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
@@ -290,17 +403,49 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
                       <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <Bot className="w-4 h-4 text-indigo-600" />
                       </div>
-                      <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%]">
-                        {qa.isLoading ? (
-                          <div className="flex items-center gap-2">
-                            <Loader2 className="w-4 h-4 text-gray-600 animate-spin" />
-                            <span className="text-sm text-gray-500">Thinking...</span>
+                      <div className="flex-1 max-w-[80%]">
+                        <div className="bg-gray-100 rounded-2xl rounded-tl-sm px-4 py-3">
+                          {qa.isLoading ? (
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 text-gray-600 animate-spin" />
+                              <span className="text-sm text-gray-500">Thinking...</span>
+                            </div>
+                          ) : qa.error ? (
+                            <p className="text-sm text-red-600 leading-relaxed">{qa.error}</p>
+                          ) : qa.answer ? (
+                            <p className="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{qa.answer}</p>
+                          ) : null}
+                        </div>
+                        {/* Action buttons for answers */}
+                        {(qa.answer || qa.error) && !qa.isLoading && (
+                          <div className="flex items-center gap-2 mt-2 ml-2">
+                            {qa.answer && (
+                              <Button
+                                onClick={() => handleCopyAnswer(qa.answer!, qa.id)}
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 hover:bg-gray-200"
+                                title="Copy answer"
+                              >
+                                {copiedId === qa.id ? (
+                                  <Check className="w-3.5 h-3.5 text-green-600" />
+                                ) : (
+                                  <Copy className="w-3.5 h-3.5 text-gray-600" />
+                                )}
+                              </Button>
+                            )}
+                            <Button
+                              onClick={() => handleTryAgain(qa.question, qa.id)}
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 hover:bg-gray-200"
+                              title="Try again"
+                              disabled={loading}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-gray-600" />
+                            </Button>
                           </div>
-                        ) : qa.error ? (
-                          <p className="text-sm text-red-600 leading-relaxed">{qa.error}</p>
-                        ) : qa.answer ? (
-                          <p className="text-sm text-gray-900 leading-relaxed whitespace-pre-wrap">{qa.answer}</p>
-                        ) : null}
+                        )}
                       </div>
                     </div>
                   </div>
@@ -312,14 +457,24 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Scroll to Bottom Button - Fixed at bottom center, always visible */}
+          {/* Floating Scroll Buttons - Fixed on screen, always visible */}
           {qaHistory.length > 0 && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+            <div className="fixed bottom-24 right-8 z-50 flex flex-col gap-3">
+              <Button
+                onClick={scrollToTop}
+                className="w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl border-2 border-white transition-all duration-200 hover:scale-110 cursor-pointer"
+                size="icon"
+                aria-label="Scroll to top"
+                title="Scroll Up ⬆"
+              >
+                <ChevronUp className="w-6 h-6" />
+              </Button>
               <Button
                 onClick={scrollToBottom}
-                className="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl border-2 border-white transition-all duration-200 hover:scale-110 cursor-pointer"
+                className="w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl border-2 border-white transition-all duration-200 hover:scale-110 cursor-pointer"
                 size="icon"
                 aria-label="Scroll to bottom"
+                title="Scroll Down ⬇"
               >
                 <ChevronDown className="w-6 h-6" />
               </Button>

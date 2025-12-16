@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
+import { getUserRoleServer } from "@/lib/supabase/roles"
 import DashboardClient from "@/components/dashboard-client"
 
 export default async function DashboardPage() {
@@ -12,6 +13,9 @@ export default async function DashboardPage() {
   if (!user) {
     redirect("/login")
   }
+
+  // Get user role
+  const userRole = await getUserRoleServer(user.id)
 
   // Fetch documents
   const { data: documents, error: docsError } = await supabase
@@ -31,6 +35,7 @@ export default async function DashboardPage() {
   return (
     <DashboardClient
       user={user}
+      userRole={userRole}
       documents={documents || []}
       qaHistory={qaHistory || []}
       docsError={docsError?.message}

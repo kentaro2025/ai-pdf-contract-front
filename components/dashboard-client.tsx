@@ -6,7 +6,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { FileText, Upload, MessageSquare, LogOut, Trash2, Calendar, BarChart3, Loader2, User } from "lucide-react"
+import { FileText, Upload, MessageSquare, LogOut, Trash2, Calendar, BarChart3, Loader2, User, Shield } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,13 +39,14 @@ interface QAHistory {
 
 interface DashboardClientProps {
   user: any
+  userRole?: string | null
   documents: Document[]
   qaHistory: QAHistory[]
   docsError?: string
   qaError?: string
 }
 
-export default function DashboardClient({ user, documents, qaHistory, docsError, qaError }: DashboardClientProps) {
+export default function DashboardClient({ user, userRole, documents, qaHistory, docsError, qaError }: DashboardClientProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
@@ -158,6 +159,17 @@ export default function DashboardClient({ user, documents, qaHistory, docsError,
                       Account Status
                     </DropdownMenuItem>
                   </Link>
+                  {userRole === "admin" && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <Link href="/admin">
+                        <DropdownMenuItem className="cursor-pointer">
+                          <Shield className="mr-2 h-4 w-4" />
+                          Admin Dashboard
+                        </DropdownMenuItem>
+                      </Link>
+                    </>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
                     <LogOut className="mr-2 h-4 w-4" />
