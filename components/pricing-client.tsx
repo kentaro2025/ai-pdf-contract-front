@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge"
 import { Check, FileText, ArrowLeft, Zap, Crown, Sparkles } from "lucide-react"
 import Navigation from "@/components/navigation"
-import { useCart, CartItem } from "@/contexts/cart-context"
 
 interface PricingClientProps {
   user: any | null
@@ -16,7 +15,6 @@ interface PricingClientProps {
 
 export default function PricingClient({ user }: PricingClientProps) {
   const router = useRouter()
-  const { addToCart } = useCart()
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly")
 
   const plans = [
@@ -83,31 +81,19 @@ export default function PricingClient({ user }: PricingClientProps) {
       // Paid plan - check if user is logged in
       if (!user) {
         // Store the plan in sessionStorage to restore after login
-        const cartItem: CartItem = {
-          id: `${plan.name.toLowerCase()}-${billingPeriod}`,
-          name: plan.name,
-          price: plan.price[billingPeriod],
-          billingPeriod: billingPeriod,
-          description: plan.description,
-          features: plan.features,
+        const planData = {
+          plan: plan.name,
+          period: billingPeriod,
+          price: plan.price[billingPeriod].toString(),
         }
-        sessionStorage.setItem("pendingSubscription", JSON.stringify(cartItem))
+        sessionStorage.setItem("pendingSubscription", JSON.stringify(planData))
         // Redirect to login with return URL
-        router.push("/login?redirect=/subscribe")
+        router.push(`/login?redirect=/payment&plan=${encodeURIComponent(plan.name)}&period=${billingPeriod}&price=${plan.price[billingPeriod]}`)
         return
       }
       
-      // User is logged in - add to cart and proceed
-      const cartItem: CartItem = {
-        id: `${plan.name.toLowerCase()}-${billingPeriod}`,
-        name: plan.name,
-        price: plan.price[billingPeriod],
-        billingPeriod: billingPeriod,
-        description: plan.description,
-        features: plan.features,
-      }
-      addToCart(cartItem)
-      router.push("/subscribe")
+      // User is logged in - redirect directly to payment with plan data
+      router.push(`/payment?plan=${encodeURIComponent(plan.name)}&period=${billingPeriod}&price=${plan.price[billingPeriod]}`)
     }
   }
 

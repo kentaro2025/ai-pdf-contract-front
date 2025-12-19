@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, FileText } from "lucide-react"
-import { useCart } from "@/contexts/cart-context"
 
 export default function LoginForm() {
   const [email, setEmail] = useState("")
@@ -21,7 +20,6 @@ export default function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = getSupabaseBrowserClient()
-  const { addToCart } = useCart()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,9 +38,12 @@ export default function LoginForm() {
       const pendingSubscription = sessionStorage.getItem("pendingSubscription")
       if (pendingSubscription) {
         try {
-          const cartItem = JSON.parse(pendingSubscription)
-          addToCart(cartItem)
+          const planData = JSON.parse(pendingSubscription)
           sessionStorage.removeItem("pendingSubscription")
+          // Redirect to payment with plan data
+          router.push(`/payment?plan=${encodeURIComponent(planData.plan)}&period=${planData.period}&price=${planData.price}`)
+          router.refresh()
+          return
         } catch (e) {
           console.error("Failed to restore pending subscription", e)
         }

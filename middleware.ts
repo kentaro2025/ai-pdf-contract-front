@@ -34,9 +34,31 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Safely get user with error handling for refresh token errors
+  let user = null
+  try {
+    const result = await supabase.auth.getUser()
+    user = result.data.user
+    // If there's a refresh token error, clear the session
+    if (result.error && (result.error.message.includes("refresh_token_not_found") || 
+                         result.error.message.includes("Invalid Refresh Token"))) {
+      console.warn("Refresh token invalid in middleware, clearing session")
+      await supabase.auth.signOut()
+      user = null
+    }
+  } catch (error: any) {
+    // Handle unexpected errors
+    if (error?.message?.includes("refresh_token_not_found") || 
+        error?.message?.includes("Invalid Refresh Token")) {
+      console.warn("Auth error in middleware, clearing session")
+      try {
+        await supabase.auth.signOut()
+      } catch (signOutError) {
+        // Ignore sign out errors
+      }
+    }
+    user = null
+  }
 
   // Protect dashboard and upload routes
   if (

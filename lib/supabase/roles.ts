@@ -14,11 +14,30 @@ export async function getUserRoleServer(userId?: string): Promise<UserRole | nul
     let targetUserId = userId
     
     if (!targetUserId) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) return null
-      targetUserId = user.id
+      try {
+        const {
+          data: { user },
+          error,
+        } = await supabase.auth.getUser()
+        
+        // Handle refresh token errors
+        if (error && (error.message.includes("refresh_token_not_found") || 
+                      error.message.includes("Invalid Refresh Token"))) {
+          console.warn("Refresh token invalid in getUserRoleServer")
+          return null
+        }
+        
+        if (!user) return null
+        targetUserId = user.id
+      } catch (error: any) {
+        // Handle unexpected auth errors
+        if (error?.message?.includes("refresh_token_not_found") || 
+            error?.message?.includes("Invalid Refresh Token")) {
+          console.warn("Auth error in getUserRoleServer")
+          return null
+        }
+        throw error
+      }
     }
 
     const { data, error } = await supabase
@@ -50,11 +69,41 @@ export async function getUserRoleClient(userId?: string): Promise<UserRole | nul
     let targetUserId = userId
     
     if (!targetUserId) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) return null
-      targetUserId = user.id
+      try {
+        const {
+          data: { user },
+          error,
+        } = await supabase.auth.getUser()
+        
+        // Handle refresh token errors
+        if (error && (error.message.includes("refresh_token_not_found") || 
+                      error.message.includes("Invalid Refresh Token"))) {
+          console.warn("Refresh token invalid in getUserRoleClient")
+          // Clear session on client side
+          try {
+            await supabase.auth.signOut()
+          } catch (signOutError) {
+            // Ignore sign out errors
+          }
+          return null
+        }
+        
+        if (!user) return null
+        targetUserId = user.id
+      } catch (error: any) {
+        // Handle unexpected auth errors
+        if (error?.message?.includes("refresh_token_not_found") || 
+            error?.message?.includes("Invalid Refresh Token")) {
+          console.warn("Auth error in getUserRoleClient")
+          try {
+            await supabase.auth.signOut()
+          } catch (signOutError) {
+            // Ignore sign out errors
+          }
+          return null
+        }
+        throw error
+      }
     }
 
     const { data, error } = await supabase

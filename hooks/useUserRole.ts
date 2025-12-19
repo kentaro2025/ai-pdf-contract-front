@@ -14,7 +14,22 @@ export function useUserRole() {
       try {
         const {
           data: { user },
+          error,
         } = await supabase.auth.getUser()
+        
+        // Handle refresh token errors
+        if (error && (error.message.includes("refresh_token_not_found") || 
+                      error.message.includes("Invalid Refresh Token"))) {
+          console.warn("Refresh token invalid, clearing session")
+          try {
+            await supabase.auth.signOut()
+          } catch (signOutError) {
+            console.error("Error signing out:", signOutError)
+          }
+          setRole(null)
+          setLoading(false)
+          return
+        }
         
         if (!user) {
           setRole(null)
@@ -24,9 +39,21 @@ export function useUserRole() {
 
         const userRole = await getUserRoleClient(user.id)
         setRole(userRole)
-      } catch (error) {
-        console.error("Error fetching user role:", error)
-        setRole("user") // Default to 'user' on error
+      } catch (error: any) {
+        // Handle unexpected auth errors
+        if (error?.message?.includes("refresh_token_not_found") || 
+            error?.message?.includes("Invalid Refresh Token")) {
+          console.warn("Auth error in useUserRole, clearing session")
+          try {
+            await supabase.auth.signOut()
+          } catch (signOutError) {
+            console.error("Error signing out:", signOutError)
+          }
+          setRole(null)
+        } else {
+          console.error("Error fetching user role:", error)
+          setRole("user") // Default to 'user' on error
+        }
       } finally {
         setLoading(false)
       }
@@ -34,10 +61,22 @@ export function useUserRole() {
 
     fetchRole()
 
-    // Listen for auth state changes
+    // Listen for auth state changes with error handling
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Handle token refresh errors
+      if (event === "TOKEN_REFRESHED" && !session) {
+        console.warn("Token refresh failed, clearing session")
+        try {
+          await supabase.auth.signOut()
+        } catch (signOutError) {
+          console.error("Error signing out:", signOutError)
+        }
+        setRole(null)
+        setLoading(false)
+        return
+      }
       fetchRole()
     })
 

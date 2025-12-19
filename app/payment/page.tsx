@@ -1,46 +1,301 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { useCart } from "@/contexts/cart-context"
+import { loadStripe } from "@stripe/stripe-js"
+import { Elements, useStripe, useElements, CardElement } from "@stripe/react-stripe-js"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { FileText, CreditCard, Lock, ArrowLeft, CheckCircle2, Bitcoin, Wallet, Coins } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { FileText, CreditCard, Lock, ArrowLeft, CheckCircle2, Bitcoin, Wallet, Coins, AlertCircle } from "lucide-react"
 import Navigation from "@/components/navigation"
 
 type PaymentMethod = "card" | "paypal" | "btc" | "eth" | "sol"
 
-export default function PaymentPage() {
+interface SubscriptionItem {
+  id: string
+  name: string
+  price: number
+  billingPeriod: "monthly" | "yearly"
+  description: string
+  features: string[]
+}
+
+// Initialize Stripe
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "")
+
+function PaymentFormContent() {
   const router = useRouter()
-  const { items, getTotal, clearCart } = useCart()
+  const searchParams = useSearchParams()
+  const stripe = useStripe()
+  const elements = useElements()
+  const [subscriptionItem, setSubscriptionItem] = useState<SubscriptionItem | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card")
-  const [cardDetails, setCardDetails] = useState({
-    number: "",
-    name: "",
-    expiry: "",
-    cvv: "",
-  })
+  const [cardholderName, setCardholderName] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [clientSecret, setClientSecret] = useState<string | null>(null)
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null)
 
-  const handlePayment = async () => {
+  // Load subscription data from URL params
+  useEffect(() => {
+    const planName = searchParams.get("plan")
+    const billingPeriod = searchParams.get("period") as "monthly" | "yearly" | null
+    const price = searchParams.get("price")
+    
+    if (planName && billingPeriod && price) {
+      setSubscriptionItem({
+        id: `${planName.toLowerCase()}-${billingPeriod}`,
+        name: planName,
+        price: parseFloat(price),
+        billingPeriod: billingPeriod,
+        description: `${planName} Plan`,
+        features: [],
+      })
+    }
+  }, [searchParams])
+
+  // Handle PayPal return/callback
+  useEffect(() => {
+    const token = searchParams.get("token")
+    const payerId = searchParams.get("PayerID")
+    const canceled = searchParams.get("canceled")
+
+    if (canceled === "true") {
+      setError("PayPal payment was canceled")
+      // Clean up URL
+      router.replace("/payment")
+      return
+    }
+
+    if (token && payerId) {
+      // PayPal returned successfully, capture the order
+      const orderId = sessionStorage.getItem("paypal_order_id")
+      if (orderId) {
+        handlePayPalCapture(orderId)
+      }
+    }
+  }, [searchParams])
+
+  const handlePayPalCapture = async (orderId: string) => {
     setIsProcessing(true)
-    // Simulate payment processing
-    setTimeout(() => {
+    setError(null)
+
+    try {
+      const response = await fetch("/api/payment/capture-paypal-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ orderId }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to capture PayPal order")
+      }
+
+      const data = await response.json()
+
+      if (data.success) {
+        // Clean up session storage
+        sessionStorage.removeItem("paypal_order_id")
+        sessionStorage.removeItem("subscription_item")
+        
+        setIsSuccess(true)
+        setTimeout(() => {
+          router.push("/dashboard")
+        }, 2000)
+      } else {
+        throw new Error("Payment was not successful")
+      }
+    } catch (err: any) {
+      console.error("PayPal capture error:", err)
+      setError(err.message || "An error occurred during payment confirmation")
       setIsProcessing(false)
-      setIsSuccess(true)
-      clearCart()
-      setTimeout(() => {
-        router.push("/dashboard")
-      }, 2000)
-    }, 2000)
+      // Clean up URL
+      router.replace("/payment")
+    }
   }
 
-  if (items.length === 0 && !isSuccess) {
+  // Create payment intent when subscription item is available
+  useEffect(() => {
+    if (subscriptionItem && paymentMethod === "card" && !isSuccess) {
+      createPaymentIntent()
+    }
+  }, [subscriptionItem, paymentMethod])
+
+  const createPaymentIntent = async () => {
+    if (!subscriptionItem) return
+    
+    try {
+      const response = await fetch("/api/payment/create-intent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: subscriptionItem.price,
+          currency: "usd",
+          items: [subscriptionItem],
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to create payment intent")
+      }
+
+      const data = await response.json()
+      setClientSecret(data.clientSecret)
+      setPaymentIntentId(data.paymentIntentId)
+    } catch (err: any) {
+      console.error("Error creating payment intent:", err)
+      setError(err.message || "Failed to initialize payment")
+    }
+  }
+
+  const handlePayPalPayment = async () => {
+    if (!subscriptionItem) {
+      setError("No subscription selected")
+      return
+    }
+
+    setIsProcessing(true)
+    setError(null)
+
+    try {
+      // Create PayPal order
+      const response = await fetch("/api/payment/create-paypal-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: subscriptionItem.price,
+          currency: "USD",
+          items: [subscriptionItem],
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to create PayPal order")
+      }
+
+      const data = await response.json()
+
+      if (data.approvalUrl) {
+        // Store order ID in sessionStorage for later verification
+        sessionStorage.setItem("paypal_order_id", data.orderId)
+        sessionStorage.setItem("subscription_item", JSON.stringify(subscriptionItem))
+        
+        // Redirect to PayPal
+        window.location.href = data.approvalUrl
+      } else {
+        throw new Error("No approval URL received from PayPal")
+      }
+    } catch (err: any) {
+      console.error("PayPal payment error:", err)
+      setError(err.message || "An error occurred during PayPal payment")
+      setIsProcessing(false)
+    }
+  }
+
+  const handlePayment = async () => {
+    if (!subscriptionItem) {
+      setError("No subscription selected")
+      return
+    }
+
+    if (paymentMethod === "paypal") {
+      await handlePayPalPayment()
+      return
+    }
+
+    if (paymentMethod !== "card") {
+      // Handle other payment methods (simulated)
+      setIsProcessing(true)
+      setTimeout(() => {
+        setIsProcessing(false)
+        setIsSuccess(true)
+        setTimeout(() => {
+          router.push("/dashboard")
+        }, 2000)
+      }, 2000)
+      return
+    }
+
+    if (!stripe || !elements || !clientSecret) {
+      setError("Stripe is not initialized. Please refresh the page.")
+      return
+    }
+
+    setIsProcessing(true)
+    setError(null)
+
+    const cardElement = elements.getElement(CardElement)
+    if (!cardElement) {
+      setError("Card element not found")
+      setIsProcessing(false)
+      return
+    }
+
+    try {
+      // Confirm payment with Stripe
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: {
+          card: cardElement,
+          billing_details: {
+            name: cardholderName || "Customer",
+          },
+        },
+      })
+
+      if (confirmError) {
+        setError(confirmError.message || "Payment failed")
+        setIsProcessing(false)
+        return
+      }
+
+      if (paymentIntent?.status === "succeeded") {
+        // Confirm payment on backend
+        const confirmResponse = await fetch("/api/payment/confirm", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            paymentIntentId: paymentIntent.id,
+          }),
+        })
+
+        if (!confirmResponse.ok) {
+          const errorData = await confirmResponse.json()
+          throw new Error(errorData.error || "Failed to confirm payment")
+        }
+
+        setIsSuccess(true)
+        setTimeout(() => {
+          router.push("/dashboard")
+        }, 2000)
+      } else {
+        setError("Payment was not successful. Please try again.")
+      }
+    } catch (err: any) {
+      console.error("Payment error:", err)
+      setError(err.message || "An error occurred during payment")
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  if (!subscriptionItem && !isSuccess) {
     return (
       <div className="min-h-screen bg-pattern">
         <header className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
@@ -62,8 +317,8 @@ export default function PaymentPage() {
         <div className="container mx-auto px-4 py-12 max-w-2xl text-center">
           <Card className="py-12">
             <CardContent>
-              <h2 className="text-2xl font-semibold text-gray-900 mb-4">No items in cart</h2>
-              <p className="text-gray-600 mb-6">Please add items to your cart before proceeding to payment</p>
+              <h2 className="text-2xl font-semibold text-gray-900 mb-4">No subscription selected</h2>
+              <p className="text-gray-600 mb-6">Please select a plan from our pricing page to proceed with payment</p>
               <Link href="/pricing">
                 <Button className="bg-blue-600 hover:bg-blue-700 text-white">View Pricing Plans</Button>
               </Link>
@@ -128,10 +383,10 @@ export default function PaymentPage() {
 
       <div className="container mx-auto px-4 py-12 max-w-6xl">
         <div className="flex items-center gap-4 mb-8">
-          <Link href="/subscribe">
+          <Link href="/pricing">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Subscribe
+              Back to Pricing
             </Button>
           </Link>
         </div>
@@ -259,63 +514,61 @@ export default function PaymentPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Card Details</CardTitle>
+                  <CardDescription>Enter your card information securely</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="cardNumber">Card Number</Label>
-                    <Input
-                      id="cardNumber"
-                      type="text"
-                      placeholder="1234 5678 9012 3456"
-                      maxLength={19}
-                      value={cardDetails.number}
-                      onChange={(e) => {
-                        const value = e.target.value.replace(/\s/g, "").replace(/\D/g, "")
-                        const formatted = value.match(/.{1,4}/g)?.join(" ") || value
-                        setCardDetails({ ...cardDetails, number: formatted })
-                      }}
-                    />
-                  </div>
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
                   <div>
                     <Label htmlFor="cardName">Cardholder Name</Label>
-                    <Input
-                      id="cardName"
-                      type="text"
-                      placeholder="John Doe"
-                      value={cardDetails.name}
-                      onChange={(e) => setCardDetails({ ...cardDetails, name: e.target.value })}
-                    />
+                    <div className="bg-white mt-2">
+                      <Input
+                        id="cardName"
+                        type="text"
+                        placeholder="John Doe"
+                        value={cardholderName}
+                        onChange={(e) => setCardholderName(e.target.value)}
+                        required
+                      />  
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="expiry">Expiry Date</Label>
-                      <Input
-                        id="expiry"
-                        type="text"
-                        placeholder="MM/YY"
-                        maxLength={5}
-                        value={cardDetails.expiry}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, "")
-                          const formatted = value.length >= 2 ? `${value.slice(0, 2)}/${value.slice(2, 4)}` : value
-                          setCardDetails({ ...cardDetails, expiry: formatted })
+                  <div>
+                    <Label>Card Information</Label>
+                    <div className="border border-gray-300 rounded-md p-3 bg-white mt-2">
+                      <CardElement
+                        options={{
+                          style: {
+                            base: {
+                              fontSize: "16px",
+                              color: "#32325d",
+                              fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
+                              "::placeholder": {
+                                color: "#aab7c4",
+                              },
+                            },
+                            invalid: {
+                              color: "#fa755a",
+                              iconColor: "#fa755a",
+                            },
+                          },
+                          hidePostalCode: true,
+                        }}
+                        onChange={(e: any) => {
+                          if (e.error) {
+                            setError(e.error.message)
+                          } else {
+                            setError(null)
+                          }
                         }}
                       />
                     </div>
-                    <div>
-                      <Label htmlFor="cvv">CVV</Label>
-                      <Input
-                        id="cvv"
-                        type="text"
-                        placeholder="123"
-                        maxLength={4}
-                        value={cardDetails.cvv}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, "")
-                          setCardDetails({ ...cardDetails, cvv: value })
-                        }}
-                      />
-                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Your card details are securely processed by Stripe
+                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -333,7 +586,7 @@ export default function PaymentPage() {
                 <CardContent className="space-y-4">
                   <div className="bg-gray-50 p-4 rounded-lg">
                     <p className="text-sm text-gray-700 mb-2">
-                      Send <strong>${getTotal().toFixed(2)} USD</strong> worth of{" "}
+                      Send <strong>${subscriptionItem?.price.toFixed(2) || "0.00"} USD</strong> worth of{" "}
                       {paymentMethod === "btc" ? "Bitcoin" : paymentMethod === "eth" ? "Ethereum" : "Solana"} to:
                     </p>
                     <div className="bg-white p-3 rounded border border-gray-200 font-mono text-sm break-all">
@@ -356,11 +609,21 @@ export default function PaymentPage() {
                   <CardTitle>PayPal Payment</CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {error && (
+                    <Alert variant="destructive" className="mb-4">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
                   <p className="text-sm text-gray-700 mb-4">
                     You will be redirected to PayPal to complete your payment securely.
                   </p>
-                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white">
-                    Continue with PayPal
+                  <Button 
+                    onClick={handlePayPalPayment}
+                    disabled={isProcessing || !subscriptionItem}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {isProcessing ? "Processing..." : "Continue with PayPal"}
                   </Button>
                 </CardContent>
               </Card>
@@ -374,28 +637,28 @@ export default function PaymentPage() {
                 <CardTitle>Order Summary</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  {items.map((item) => (
-                    <div key={item.id} className="flex justify-between items-start">
+                {subscriptionItem && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <p className="font-semibold text-sm">{item.name} Plan</p>
-                        <p className="text-xs text-gray-600">{item.billingPeriod}</p>
+                        <p className="font-semibold text-sm">{subscriptionItem.name} Plan</p>
+                        <p className="text-xs text-gray-600">{subscriptionItem.billingPeriod}</p>
                       </div>
-                      <span className="font-semibold">${item.price.toFixed(2)}</span>
+                      <span className="font-semibold">${subscriptionItem.price.toFixed(2)}</span>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
                 <div className="pt-4 border-t border-blue-200">
                   <div className="flex justify-between items-center mb-4">
                     <span className="text-lg font-bold text-gray-900">Total</span>
-                    <span className="text-2xl font-bold text-blue-600">${getTotal().toFixed(2)}</span>
+                    <span className="text-2xl font-bold text-blue-600">${subscriptionItem?.price.toFixed(2) || "0.00"}</span>
                   </div>
                   <Button
                     onClick={handlePayment}
-                    disabled={isProcessing || (paymentMethod === "card" && (!cardDetails.number || !cardDetails.name || !cardDetails.expiry || !cardDetails.cvv))}
+                    disabled={isProcessing || (paymentMethod === "card" && (!cardholderName || !clientSecret)) || (paymentMethod === "paypal") || !subscriptionItem}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                   >
-                    {isProcessing ? "Processing..." : `Pay $${getTotal().toFixed(2)}`}
+                    {isProcessing ? "Processing..." : `Pay $${subscriptionItem?.price.toFixed(2) || "0.00"}`}
                   </Button>
                   <p className="text-xs text-gray-500 text-center mt-3">
                     <Lock className="w-3 h-3 inline mr-1" />
@@ -408,6 +671,14 @@ export default function PaymentPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function PaymentPage() {
+  return (
+    <Elements stripe={stripePromise}>
+      <PaymentFormContent />
+    </Elements>
   )
 }
 
