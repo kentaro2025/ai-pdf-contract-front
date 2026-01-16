@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { loadStripe } from "@stripe/stripe-js"
@@ -674,7 +674,7 @@ function PaymentFormContent() {
   )
 }
 
-export default function PaymentPage() {
+function PaymentPageContent() {
   return (
     <Elements stripe={stripePromise}>
       <PaymentFormContent />
@@ -682,3 +682,17 @@ export default function PaymentPage() {
   )
 }
 
+export default function PaymentPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-pattern flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading payment page...</p>
+        </div>
+      </div>
+    }>
+      <PaymentPageContent />
+    </Suspense>
+  )
+}
