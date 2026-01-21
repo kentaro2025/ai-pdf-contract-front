@@ -29,57 +29,38 @@ import {
 import Link from "next/link"
 import Navigation from "@/components/navigation"
 import ConfirmDialog from "@/components/confirm-dialog"
+import type {
+  UserSubscription,
+  BillingHistoryItem,
+  PaymentMethod,
+} from "@/lib/supabase/subscriptions"
 
 interface AccountStatusProps {
   user: any | null
   documentsCount: number
   questionsCount: number
   totalStorage: number
+  subscription: UserSubscription | null
+  billingHistory: BillingHistoryItem[]
+  paymentMethods: PaymentMethod[]
 }
 
-interface BillingHistoryItem {
-  id: string
-  date: string
-  description: string
-  amount: number
-  status: "paid" | "pending" | "failed"
-  invoiceUrl?: string
-}
-
-export default function AccountStatus({ user, documentsCount, questionsCount, totalStorage }: AccountStatusProps) {
+export default function AccountStatus({
+  user,
+  documentsCount,
+  questionsCount,
+  totalStorage,
+  subscription,
+  billingHistory,
+  paymentMethods,
+}: AccountStatusProps) {
   const router = useRouter()
   const supabase = getSupabaseBrowserClient()
-  const [currentPlan, setCurrentPlan] = useState<"free" | "basic" | "pro">("basic")
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
 
-  // Mock billing history data
-  const billingHistory: BillingHistoryItem[] = [
-    {
-      id: "1",
-      date: "2024-01-15",
-      description: "Basic Plan - Monthly Subscription",
-      amount: 9.0,
-      status: "paid",
-      invoiceUrl: "#",
-    },
-    {
-      id: "2",
-      date: "2023-12-15",
-      description: "Basic Plan - Monthly Subscription",
-      amount: 9.0,
-      status: "paid",
-      invoiceUrl: "#",
-    },
-    {
-      id: "3",
-      date: "2023-11-15",
-      description: "Basic Plan - Monthly Subscription",
-      amount: 9.0,
-      status: "paid",
-      invoiceUrl: "#",
-    },
-  ]
+  // Get current plan name from subscription or default to "Free"
+  const currentPlanName = subscription?.plan?.name?.toLowerCase() || "free"
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -93,12 +74,29 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
 
   const handleCancelSubscription = async () => {
     setIsProcessing(true)
-    // Simulate cancellation
-    setTimeout(() => {
-      setCurrentPlan("free")
+    try {
+      // Update subscription to cancel at period end
+      const { error } = await supabase
+        .from("user_subscriptions")
+        .update({
+          cancel_at_period_end: true,
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id)
+
+      if (error) {
+        console.error("Error cancelling subscription:", error)
+        alert("Failed to cancel subscription. Please try again.")
+      } else {
+        setCancelDialogOpen(false)
+        router.refresh()
+      }
+    } catch (error) {
+      console.error("Error cancelling subscription:", error)
+      alert("Failed to cancel subscription. Please try again.")
+    } finally {
       setIsProcessing(false)
-      setCancelDialogOpen(false)
-    }, 1500)
+    }
   }
 
   const formatFileSize = (bytes: number) => {
@@ -128,31 +126,42 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
   }
 
   const getPlanDetails = () => {
-    switch (currentPlan) {
-      case "free":
-        return {
-          name: "Free Plan",
-          price: 0,
-          icon: FileText,
-          color: "blue",
-          features: ["Up to 10 documents", "50 questions per month", "Basic AI responses", "Email support"],
-        }
-      case "basic":
-        return {
-          name: "Basic Plan",
-          price: 9.99,
-          icon: Zap,
-          color: "purple",
-          features: ["Up to 100 documents", "500 questions per month", "Advanced AI responses", "Priority support"],
-        }
-      case "pro":
-        return {
-          name: "Pro Plan",
-          price: 19.99,
-          icon: Crown,
-          color: "orange",
-          features: ["Unlimited documents", "Unlimited questions", "Premium AI responses", "24/7 support"],
-        }
+    if (subscription?.plan) {
+      const plan = subscription.plan
+      const price =
+        subscription.billing_period === "yearly" ? plan.price_yearly : plan.price_monthly
+      const features = Array.isArray(plan.features) ? plan.features : []
+
+      let icon = FileText
+      let color = "blue"
+      if (plan.name === "Basic") {
+        icon = Zap
+        color = "purple"
+      } else if (plan.name === "Pro") {
+        icon = Crown
+        color = "orange"
+      }
+
+      return {
+        name: plan.name,
+        price,
+        icon,
+        color,
+        features,
+        billingPeriod: subscription.billing_period,
+        periodEnd: subscription.current_period_end,
+      }
+    }
+
+    // Default to Free plan
+    return {
+      name: "Free",
+      price: 0,
+      icon: FileText,
+      color: "blue",
+      features: ["Up to 1 documents", "10 questions per month", "Basic AI responses", "Email support"],
+      billingPeriod: "monthly" as const,
+      periodEnd: null,
     }
   }
 
@@ -242,7 +251,7 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
                       <Shield className="w-4 h-4" />
                       <span>User ID</span>
                     </div>
-                    <span className="text-sm font-mono text-gray-900 text-xs">{user?.id || "N/A"}</span>
+                    <span className="text-sm font-medium text-gray-900">{user?.id || "N/A"}</span>
                   </div>
                 </div>
               </div>
@@ -307,14 +316,14 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
               </div>
               <Badge
                 className={`${
-                  currentPlan === "free"
+                  currentPlanName === "free"
                     ? "bg-blue-100 text-blue-700"
-                    : currentPlan === "basic"
+                    : currentPlanName === "basic"
                       ? "bg-purple-100 text-purple-700"
                       : "bg-orange-100 text-orange-700"
                 } hover:opacity-90`}
               >
-                Current Plan
+                {subscription?.status === "active" ? "Active" : subscription?.status || "Inactive"}
               </Badge>
             </div>
           </CardHeader>
@@ -343,11 +352,13 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-gray-900 text-lg">{planDetails.name}</h4>
+                    <h4 className="font-semibold text-gray-900 text-lg">{planDetails.name} Plan</h4>
                     {planDetails.price > 0 && (
                       <span className="text-xl font-bold text-gray-900">
-                        ${planDetails.price}
-                        <span className="text-sm font-normal text-gray-600">/month</span>
+                        ${planDetails.price.toFixed(2)}
+                        <span className="text-sm font-normal text-gray-600">
+                          /{planDetails.billingPeriod === "monthly" ? "month" : "year"}
+                        </span>
                       </span>
                     )}
                   </div>
@@ -364,7 +375,7 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
 
               {/* Plan Actions */}
               <div className="flex flex-col sm:flex-row gap-3">
-                {currentPlan === "free" ? (
+                {currentPlanName === "free" ? (
                   <Button onClick={handleUpgrade} className="bg-blue-600 hover:bg-blue-700 text-white">
                     <ArrowUp className="mr-2 h-4 w-4" />
                     Upgrade Plan
@@ -375,24 +386,40 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
                       <ArrowUp className="mr-2 h-4 w-4" />
                       Change Plan
                     </Button>
-                    <Button
-                      onClick={() => setCancelDialogOpen(true)}
-                      variant="outline"
-                      className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <X className="mr-2 h-4 w-4" />
-                      Cancel Subscription
-                    </Button>
+                    {!subscription?.cancel_at_period_end && (
+                      <Button
+                        onClick={() => setCancelDialogOpen(true)}
+                        variant="outline"
+                        className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <X className="mr-2 h-4 w-4" />
+                        Cancel Subscription
+                      </Button>
+                    )}
+                    {subscription?.cancel_at_period_end && (
+                      <div className="flex-1 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                        <p className="text-sm text-yellow-900">
+                          <strong>Subscription will cancel on:</strong>{" "}
+                          {planDetails.periodEnd
+                            ? new Date(planDetails.periodEnd).toLocaleDateString("en-US", {
+                                year: "numeric",
+                                month: "long",
+                                day: "numeric",
+                              })
+                            : "N/A"}
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
 
               {/* Next Billing Date */}
-              {currentPlan !== "free" && (
+              {currentPlanName !== "free" && planDetails.periodEnd && (
                 <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <p className="text-sm text-blue-900">
                     <strong>Next billing date:</strong>{" "}
-                    {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString("en-US", {
+                    {new Date(planDetails.periodEnd).toLocaleDateString("en-US", {
                       year: "numeric",
                       month: "long",
                       day: "numeric",
@@ -432,13 +459,15 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
                     {billingHistory.map((item) => (
                       <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                         <td className="py-3 px-4 text-sm text-gray-600">
-                          {new Date(item.date).toLocaleDateString("en-US", {
+                          {new Date(item.created_at).toLocaleDateString("en-US", {
                             year: "numeric",
                             month: "short",
                             day: "numeric",
                           })}
                         </td>
-                        <td className="py-3 px-4 text-sm text-gray-900">{item.description}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900">
+                          {item.plan?.name || "Unknown"} Plan - {item.billing_period === "monthly" ? "Monthly" : "Yearly"} Subscription
+                        </td>
                         <td className="py-3 px-4 text-sm font-semibold text-gray-900 text-right">
                           {formatCurrency(item.amount)}
                         </td>
@@ -456,11 +485,15 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
                           </Badge>
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <Button variant="ghost" size="sm" asChild>
-                            <a href={item.invoiceUrl} target="_blank" rel="noopener noreferrer">
-                              <Download className="w-4 h-4" />
-                            </a>
-                          </Button>
+                          {item.invoice_url ? (
+                            <Button variant="ghost" size="sm" asChild>
+                              <a href={item.invoice_url} target="_blank" rel="noopener noreferrer">
+                                <Download className="w-4 h-4" />
+                              </a>
+                            </Button>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -472,25 +505,77 @@ export default function AccountStatus({ user, documentsCount, questionsCount, to
         </Card>
 
         {/* Payment Method */}
-        {currentPlan !== "free" && (
+        {currentPlanName !== "free" && (
           <Card className="border-gray-200 shadow-sm mb-6">
             <CardHeader>
-              <CardTitle className="text-lg">Payment Method</CardTitle>
+              <CardTitle className="text-lg">Payment Methods</CardTitle>
               <CardDescription>Manage your payment information</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <div className="flex items-center gap-3">
-                  <CreditCard className="w-5 h-5 text-gray-600" />
-                  <div>
-                    <p className="font-semibold text-gray-900">•••• •••• •••• 4242</p>
-                    <p className="text-sm text-gray-600">Expires 12/25</p>
-                  </div>
+              {paymentMethods.length === 0 ? (
+                <div className="text-center py-8">
+                  <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 mb-4">No payment methods saved</p>
+                  <Button variant="outline" onClick={() => router.push("/pricing")}>
+                    Add Payment Method
+                  </Button>
                 </div>
-                <Button variant="outline" size="sm">
-                  Update
-                </Button>
-              </div>
+              ) : (
+                <div className="space-y-3">
+                  {paymentMethods.map((method) => (
+                    <div
+                      key={method.id}
+                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
+                    >
+                      <div className="flex items-center gap-3">
+                        <CreditCard className="w-5 h-5 text-gray-600" />
+                        <div>
+                          {method.type === "card" && method.card_last4 ? (
+                            <>
+                              <p className="font-semibold text-gray-900">
+                                {method.card_brand
+                                  ? method.card_brand.charAt(0).toUpperCase() +
+                                    method.card_brand.slice(1)
+                                  : "Card"}{" "}
+                                •••• {method.card_last4}
+                              </p>
+                              {method.card_exp_month && method.card_exp_year && (
+                                <p className="text-sm text-gray-600">
+                                  Expires {method.card_exp_month}/{method.card_exp_year}
+                                </p>
+                              )}
+                            </>
+                          ) : method.type === "paypal" && method.paypal_email ? (
+                            <>
+                              <p className="font-semibold text-gray-900">PayPal</p>
+                              <p className="text-sm text-gray-600">{method.paypal_email}</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="font-semibold text-gray-900">
+                                {method.type.toUpperCase()}
+                              </p>
+                              {method.crypto_address && (
+                                <p className="text-sm text-gray-600 font-mono text-xs">
+                                  {method.crypto_address.slice(0, 10)}...
+                                </p>
+                              )}
+                            </>
+                          )}
+                          {method.is_default && (
+                            <Badge className="mt-1 bg-blue-100 text-blue-700 text-xs">
+                              Default
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <Button variant="outline" size="sm">
+                        Update
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

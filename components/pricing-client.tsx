@@ -8,68 +8,58 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge"
 import { Check, FileText, ArrowLeft, Zap, Crown, Sparkles } from "lucide-react"
 import Navigation from "@/components/navigation"
+import type { SubscriptionPlan } from "@/lib/supabase/subscriptions"
 
 interface PricingClientProps {
   user: any | null
+  plans: SubscriptionPlan[]
 }
 
-export default function PricingClient({ user }: PricingClientProps) {
+export default function PricingClient({ user, plans }: PricingClientProps) {
   const router = useRouter()
   const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly")
 
-  const plans = [
-    {
-      name: "Free",
-      price: { monthly: 0, yearly: 0 },
-      description: "Perfect for getting started",
-      features: [
-        "Up to 10 documents",
-        "50 questions per month",
-        "Basic AI responses",
-        "Email support",
-        "Community access",
-      ],
-      icon: FileText,
-      color: "blue",
-      popular: false,
-    },
-    {
-      name: "Basic",
-      price: { monthly: 9.99, yearly: 99.99 },
-      description: "For individuals and small teams",
-      features: [
-        "Up to 100 documents",
-        "500 questions per month",
-        "Advanced AI responses",
-        "Priority email support",
-        "API access",
-        "Custom document processing",
-      ],
-      icon: Zap,
-      color: "purple",
-      popular: true,
-    },
-    {
-      name: "Pro",
-      price: { monthly: 19.99, yearly: 199.99 },
-      description: "For power users and businesses",
-      features: [
-        "Unlimited documents",
-        "Unlimited questions",
-        "Premium AI responses",
-        "24/7 priority support",
-        "Advanced API access",
-        "Custom integrations",
-        "Team collaboration",
-        "Advanced analytics",
-      ],
-      icon: Crown,
-      color: "orange",
-      popular: false,
-    },
-  ]
+  // Map plan names to icons and colors
+  const getPlanIcon = (planName: string) => {
+    const name = planName.toLowerCase()
+    if (name.includes("pro")) return Crown
+    if (name.includes("basic")) return Zap
+    return FileText
+  }
 
-  const handleGetStarted = async (plan: typeof plans[0]) => {
+  const getPlanColor = (planName: string) => {
+    const name = planName.toLowerCase()
+    if (name.includes("pro")) return "orange"
+    if (name.includes("basic")) return "purple"
+    return "blue"
+  }
+
+  // Transform database plans to component format
+  const transformedPlans = plans.map((plan) => {
+    const Icon = getPlanIcon(plan.name)
+    const color = getPlanColor(plan.name)
+    // Mark Basic plan as popular (or you can add a field to the database)
+    const popular = plan.name.toLowerCase() === "basic"
+
+    return {
+      id: plan.id,
+      name: plan.name,
+      price: {
+        monthly: Number(plan.price_monthly),
+        yearly: Number(plan.price_yearly),
+      },
+      description: plan.description || "",
+      features: plan.features || [],
+      icon: Icon,
+      color,
+      popular,
+      maxDocuments: plan.max_documents,
+      maxQuestionsPerMonth: plan.max_questions_per_month,
+      maxStorageBytes: plan.max_storage_bytes,
+    }
+  })
+
+  const handleGetStarted = async (plan: typeof transformedPlans[0]) => {
     if (plan.price.monthly === 0) {
       // Free plan - go directly to dashboard or signup
       if (user) {
@@ -149,8 +139,13 @@ export default function PricingClient({ user }: PricingClientProps) {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-          {plans.map((plan) => {
+        {transformedPlans.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-600">No subscription plans available at the moment.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+            {transformedPlans.map((plan) => {
             const Icon = plan.icon
             const price = plan.price[billingPeriod]
             const monthlyEquivalent = billingPeriod === "yearly" ? price / 12 : price
@@ -222,7 +217,8 @@ export default function PricingClient({ user }: PricingClientProps) {
               </Card>
             )
           })}
-        </div>
+          </div>
+        )}
 
         {/* FAQ Section */}
         <div className="text-center">

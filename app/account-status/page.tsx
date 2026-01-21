@@ -1,5 +1,10 @@
 import { redirect } from "next/navigation"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
+import {
+  getUserSubscription,
+  getBillingHistory,
+  getPaymentMethods,
+} from "@/lib/supabase/subscriptions"
 import AccountStatus from "@/components/account-status"
 
 export default async function AccountStatusPage() {
@@ -33,12 +38,20 @@ export default async function AccountStatusPage() {
 
   const totalStorage = documents?.reduce((sum, doc) => sum + (doc.file_size || 0), 0) || 0
 
+  // Fetch subscription data
+  const subscription = await getUserSubscription(supabase, user.id)
+  const billingHistory = await getBillingHistory(supabase, user.id)
+  const paymentMethods = await getPaymentMethods(supabase, user.id)
+
   return (
     <AccountStatus
       user={user}
       documentsCount={documentsCount || 0}
       questionsCount={questionsCount || 0}
       totalStorage={totalStorage}
+      subscription={subscription}
+      billingHistory={billingHistory}
+      paymentMethods={paymentMethods}
     />
   )
 }

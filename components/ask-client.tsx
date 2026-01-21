@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Textarea } from "@/components/ui/textarea"
-import { FileText, Send, Loader2, LogOut, ArrowLeft, Bot, User, ChevronDown, ChevronUp, Copy, RotateCcw, Check } from "lucide-react"
+import { FileText, Send, Loader2, LogOut, ArrowLeft, Bot, User, ChevronDown, ChevronUp, Copy, RotateCcw, Check, AlertTriangle } from "lucide-react"
+import { useSubscriptionLimits } from "@/hooks/useSubscriptionLimits"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   DropdownMenu,
@@ -58,6 +59,7 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const supabase = getSupabaseBrowserClient()
+  const { limits, loading: limitsLoading } = useSubscriptionLimits(user?.id)
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -98,6 +100,14 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
   const handleAskQuestion = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!question.trim() || loading) return
+
+    // Check subscription limits
+    if (limits && !limits.canAskQuestion) {
+      setError(
+        `Question limit reached (${limits.questionsUsedThisMonth}/${limits.maxQuestionsPerMonth || "unlimited"} this month). Please upgrade your plan to ask more questions.`
+      )
+      return
+    }
 
     setError("")
     setLoading(true)
@@ -326,6 +336,12 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <Link href="/account-status">
+                  <DropdownMenuItem className="cursor-pointer">
+                    <User className="mr-2 h-4 w-4" />
+                    Account Status
+                  </DropdownMenuItem>
+                </Link>
                 <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
                   <LogOut className="mr-2 h-4 w-4" />
                   Logout
@@ -484,6 +500,36 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
 
         {/* Input Form */}
         <Card className="p-4 border-gray-200 shadow-sm">
+          {limits && !limits.canAskQuestion && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="flex items-center justify-between">
+                  <span>
+                    Question limit reached ({limits.questionsUsedThisMonth}/{limits.maxQuestionsPerMonth || "unlimited"} this month). 
+                    Please upgrade your plan to ask more questions.
+                  </span>
+                  <Link href="/pricing">
+                    <Button variant="outline" size="sm" className="ml-4">
+                      Upgrade Plan
+                    </Button>
+                  </Link>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+          {limits && limits.canAskQuestion && limits.maxQuestionsPerMonth && (
+            <Alert className="mb-4">
+              <AlertDescription>
+                Questions used this month: {limits.questionsUsedThisMonth} / {limits.maxQuestionsPerMonth}
+              </AlertDescription>
+            </Alert>
+          )}
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
           <form onSubmit={handleAskQuestion} className="flex gap-3">
             <Textarea
               value={question}
@@ -500,7 +546,7 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
             />
             <Button
               type="submit"
-              disabled={!question.trim() || loading}
+              disabled={!question.trim() || loading || limitsLoading || (limits && !limits.canAskQuestion)}
               className="bg-blue-600 hover:bg-blue-700 text-white h-[60px] px-6"
             >
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
+import { getSubscriptionPlans } from "@/lib/supabase/subscriptions"
 import PricingClient from "@/components/pricing-client"
 
 export default async function PricingPage() {
@@ -8,6 +9,9 @@ export default async function PricingPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  return <PricingClient user={user} />
+  // Fetch subscription plans from database
+  const plans = await getSubscriptionPlans(supabase)
+
+  return <PricingClient user={user} plans={plans} />
 }
 

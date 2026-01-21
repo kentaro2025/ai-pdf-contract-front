@@ -1,5 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getSupabaseServerClient } from "@/lib/supabase/server"
+import {
+  createOrUpdateUserSubscription,
+  createBillingHistory,
+  getSubscriptionPlanByName,
+  createPaymentMethod,
+} from "@/lib/supabase/subscriptions"
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -18,7 +24,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { orderId } = await request.json()
+    const body = await request.json()
+    const { orderId, subscriptionItem } = body
 
     if (!orderId) {
       return NextResponse.json({ error: "Order ID is required" }, { status: 400 })
@@ -79,19 +86,111 @@ export async function POST(request: NextRequest) {
     const captureData = await captureResponse.json()
 
     if (captureData.status === "COMPLETED") {
-      // Save subscription to database
-      // Here you would typically:
-      // 1. Create a subscription record in your database
-      // 2. Update user's subscription status
-      // 3. Send confirmation email
+      // Get subscription item from request body or try to extract from order
+      let planName = "Basic"
+      let billingPeriod: "monthly" | "yearly" = "monthly"
+      
+      if (subscriptionItem) {
+        planName = subscriptionItem.name || "Basic"
+        billingPeriod = subscriptionItem.billingPeriod || "monthly"
+      } else {
+        // Try to extract from order description or metadata
+        const description = captureData.purchase_units?.[0]?.description || ""
+        // Simple parsing - in production, store this in order metadata
+        if (description.includes("Pro")) planName = "Pro"
+        else if (description.includes("Basic")) planName = "Basic"
+      }
+
+      // Get the plan from database
+      const plan = await getSubscriptionPlanByName(supabase, planName)
+      if (!plan) {
+        return NextResponse.json({ error: "Subscription plan not found" }, { status: 404 })
+      }
+
+      const amount = parseFloat(
+        captureData.purchase_units[0]?.payments?.captures[0]?.amount?.value || "0"
+      )
+
+      // Create or update user subscription
+      const subscription = await createOrUpdateUserSubscription(
+        supabase,
+        user.id,
+        plan.id,
+        billingPeriod,
+        undefined,
+        undefined,
+        captureData.id
+      )
+
+      if (!subscription) {
+        return NextResponse.json({ error: "Failed to create subscription" }, { status: 500 })
+      }
+
+      // Create billing history entry
+      const billingHistory = await createBillingHistory(
+        supabase,
+        user.id,
+        subscription.id,
+        plan.id,
+        amount,
+        billingPeriod,
+        "paypal",
+        "paypal",
+        captureData.id,
+        "paid",
+        {
+          paypal_order_id: captureData.id,
+          paypal_payer_id: captureData.payer?.payer_id,
+        }
+      )
+
+      if (!billingHistory) {
+        console.error("Failed to create billing history entry for PayPal payment. Check server logs for details.")
+        // Don't fail the entire request if billing history fails, but log it
+      } else {
+        console.log("Billing history created successfully for PayPal payment:", billingHistory.id)
+      }
+
+      // Save PayPal payment method
+      if (captureData.payer?.email_address) {
+        const paymentMethod = await createPaymentMethod(
+          supabase,
+          user.id,
+          "paypal",
+          "paypal",
+          captureData.id, // Use order ID as provider payment method ID
+          true, // Set as default
+          undefined, // cardBrand
+          undefined, // cardLast4
+          undefined, // cardExpMonth
+          undefined, // cardExpYear
+          captureData.payer.email_address, // paypalEmail
+          undefined, // cryptoAddress
+          {
+            paypal_order_id: captureData.id,
+            paypal_payer_id: captureData.payer?.payer_id,
+          }
+        )
+
+        if (paymentMethod) {
+          console.log("PayPal payment method saved successfully:", paymentMethod.id)
+        } else {
+          console.error("Failed to save PayPal payment method. Check server logs for details.")
+        }
+      }
 
       return NextResponse.json({
         success: true,
         order: {
           id: captureData.id,
           status: captureData.status,
-          amount: captureData.purchase_units[0]?.payments?.captures[0]?.amount?.value,
+          amount,
           currency: captureData.purchase_units[0]?.payments?.captures[0]?.amount?.currency_code,
+        },
+        subscription: {
+          id: subscription.id,
+          plan: plan.name,
+          status: subscription.status,
         },
       })
     }

@@ -8,9 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
-import { Upload, FileText, X, CheckCircle2, Loader2, ArrowLeft } from "lucide-react"
+import { Upload, FileText, X, CheckCircle2, Loader2, ArrowLeft, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import Navigation from "@/components/navigation"
+import { useSubscriptionLimits } from "@/hooks/useSubscriptionLimits"
 
 interface UploadClientProps {
   user: any
@@ -24,6 +25,7 @@ export default function UploadClient({ user }: UploadClientProps) {
   const [success, setSuccess] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const router = useRouter()
+  const { limits, loading: limitsLoading } = useSubscriptionLimits(user?.id)
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -65,6 +67,14 @@ export default function UploadClient({ user }: UploadClientProps) {
 
   const handleUpload = async () => {
     if (!file) return
+
+    // Check subscription limits
+    if (limits && !limits.canUploadDocument) {
+      setError(
+        `Document limit reached (${limits.documentsUsed}/${limits.maxDocuments || "unlimited"}). Please upgrade your plan to upload more documents.`
+      )
+      return
+    }
 
     setUploading(true)
     setError("")
@@ -169,6 +179,31 @@ export default function UploadClient({ user }: UploadClientProps) {
             <CardDescription>Drag and drop or click to browse</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {limits && !limits.canUploadDocument && (
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  <div className="flex items-center justify-between">
+                    <span>
+                      Document limit reached ({limits.documentsUsed}/{limits.maxDocuments || "unlimited"}). 
+                      Please upgrade your plan to upload more documents.
+                    </span>
+                    <Link href="/pricing">
+                      <Button variant="outline" size="sm" className="ml-4">
+                        Upgrade Plan
+                      </Button>
+                    </Link>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+            {limits && limits.canUploadDocument && limits.maxDocuments && (
+              <Alert>
+                <AlertDescription>
+                  Documents used: {limits.documentsUsed} / {limits.maxDocuments}
+                </AlertDescription>
+              </Alert>
+            )}
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
@@ -258,7 +293,7 @@ export default function UploadClient({ user }: UploadClientProps) {
                 {!success && (
                   <Button
                     onClick={handleUpload}
-                    disabled={uploading}
+                    disabled={uploading || limitsLoading || (limits && !limits.canUploadDocument)}
                     className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium"
                   >
                     {uploading ? (
