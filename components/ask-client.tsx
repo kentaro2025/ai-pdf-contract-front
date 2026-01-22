@@ -59,7 +59,7 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const supabase = getSupabaseBrowserClient()
-  const { limits, loading: limitsLoading } = useSubscriptionLimits(user?.id)
+  const { limits, loading: limitsLoading, refetch: refetchLimits } = useSubscriptionLimits(user?.id)
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -173,6 +173,9 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
             : qa
         )
       )
+
+      // Refetch subscription limits to update questions used this month
+      refetchLimits()
     } catch (err: any) {
       const errorMessage = err.message || "Failed to get answer"
       setError(errorMessage)
@@ -272,6 +275,9 @@ export default function AskClient({ user, documents, selectedDocId, initialQAHis
             : qa
         )
       )
+
+      // Refetch subscription limits to update questions used this month
+      refetchLimits()
     } catch (err: any) {
       const errorMessage = err.message || "Failed to get answer"
       setError(errorMessage)
