@@ -55,9 +55,19 @@ export default function DashboardClient({ user, userRole, documents, qaHistory, 
   const supabase = getSupabaseBrowserClient()
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push("/login")
-    router.refresh()
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error("Error signing out:", error)
+        setError("Failed to sign out. Please try again.")
+        return
+      }
+      // Use window.location for a hard redirect to ensure session is cleared
+      window.location.href = "/login"
+    } catch (err: any) {
+      console.error("Error during logout:", err)
+      setError("Failed to sign out. Please try again.")
+    }
   }
 
   const handleDeleteClick = (documentId: string) => {
@@ -171,7 +181,13 @@ export default function DashboardClient({ user, userRole, documents, qaHistory, 
                     </>
                   )}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.preventDefault()
+                      handleLogout()
+                    }} 
+                    className="text-red-600 cursor-pointer"
+                  >
                     <LogOut className="mr-2 h-4 w-4" />
                     Logout
                   </DropdownMenuItem>
