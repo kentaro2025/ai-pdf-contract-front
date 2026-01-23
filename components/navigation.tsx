@@ -19,6 +19,14 @@ export default function Navigation({ showAuthButtons = false }: NavigationProps)
   return (
     <nav className="flex items-center gap-6">
       <Link
+        href="/"
+        className={`text-sm font-medium transition-colors hover:text-blue-600 ${
+          isActive("/") ? "text-blue-600" : "text-gray-700"
+        }`}
+      >
+        Home
+      </Link>
+      <Link
         href="/pricing"
         className={`text-sm font-medium transition-colors hover:text-blue-600 ${
           isActive("/pricing") ? "text-blue-600" : "text-gray-700"
@@ -45,7 +53,7 @@ export default function Navigation({ showAuthButtons = false }: NavigationProps)
       {showAuthButtons && (
         <>
           <Link href="/login">
-            <Button variant="ghost" size="sm">
+            <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
               Sign In
             </Button>
           </Link>

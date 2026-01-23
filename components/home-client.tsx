@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   FileText,
   Brain,
@@ -41,6 +42,7 @@ export default function HomeClient({ user }: HomeClientProps) {
     message: "",
   })
   const [contactSubmitted, setContactSubmitted] = useState(false)
+  const [contactError, setContactError] = useState("")
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -51,13 +53,37 @@ export default function HomeClient({ user }: HomeClientProps) {
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
-    // Simulate form submission
-    setTimeout(() => {
-      setIsSubmitting(false)
+    setContactError("")
+
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: contactForm.name,
+          email: contactForm.email,
+          message: contactForm.message,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send message")
+      }
+
+      // Success - show success message
       setContactSubmitted(true)
       setContactForm({ name: "", email: "", message: "" })
       setTimeout(() => setContactSubmitted(false), 5000)
-    }, 1000)
+    } catch (err: any) {
+      console.error("Contact form error:", err)
+      setContactError(err.message || "Failed to send message. Please try again.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const features = [
@@ -249,7 +275,7 @@ export default function HomeClient({ user }: HomeClientProps) {
       </section>
 
       {/* Contact Us Section */}
-      <section className="bg-white border-t border-gray-200 py-20">
+      <section id="contact" className="bg-white border-t border-gray-200 py-20">
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">Contact Us</h2>
@@ -273,7 +299,7 @@ export default function HomeClient({ user }: HomeClientProps) {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900">Email</p>
-                      <p className="text-gray-600">support@documindai.com</p>
+                      <p className="text-gray-600">info@kncinnovations.com</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -282,7 +308,7 @@ export default function HomeClient({ user }: HomeClientProps) {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900">Phone</p>
-                      <p className="text-gray-600">+1 (555) 123-4567</p>
+                      <p className="text-gray-600">+1 (704) 858-7836</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -291,7 +317,7 @@ export default function HomeClient({ user }: HomeClientProps) {
                     </div>
                     <div>
                       <p className="font-semibold text-gray-900">Address</p>
-                      <p className="text-gray-600">123 Innovation Drive, Tech City, TC 12345</p>
+                      <p className="text-gray-600">Little Ferry, New Jersey, United States</p>
                     </div>
                   </div>
                 </CardContent>
@@ -313,6 +339,11 @@ export default function HomeClient({ user }: HomeClientProps) {
                   </div>
                 ) : (
                   <form onSubmit={handleContactSubmit} className="space-y-4">
+                    {contactError && (
+                      <Alert variant="destructive">
+                        <AlertDescription>{contactError}</AlertDescription>
+                      </Alert>
+                    )}
                     <div>
                       <Label htmlFor="name">Name</Label>
                       <Input
@@ -413,14 +444,9 @@ export default function HomeClient({ user }: HomeClientProps) {
                   </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white">
+                  <Link href="/about" className="hover:text-white">
                     About
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-white">
-                    Blog
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -428,14 +454,14 @@ export default function HomeClient({ user }: HomeClientProps) {
               <h4 className="text-white font-semibold mb-4">Legal</h4>
               <ul className="space-y-2 text-sm">
                 <li>
-                  <a href="#" className="hover:text-white">
+                  <Link href="/privacy" className="hover:text-white">
                     Privacy Policy
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white">
+                  <Link href="/terms" className="hover:text-white">
                     Terms of Service
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
