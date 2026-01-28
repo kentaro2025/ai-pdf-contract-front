@@ -22,8 +22,43 @@ export const metadata: Metadata = {
 }
 
 export default function AboutPage() {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://yourdomain.com"
+
+  // Structured data for About page
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "AboutPage",
+    name: "About DocuMind AI",
+    description: "Learn about DocuMind AI, our mission to transform document processing with advanced AI technology.",
+    url: `${baseUrl}/about`,
+    mainEntity: {
+      "@type": "Organization",
+      name: "DocuMind AI",
+      url: baseUrl,
+      logo: `${baseUrl}/icon.svg`,
+      description: "AI-powered document intelligence platform",
+      contactPoint: {
+        "@type": "ContactPoint",
+        email: "info@kncinnovations.com",
+        telephone: "+1-704-858-7836",
+        contactType: "Customer Service",
+      },
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: "Little Ferry",
+        addressRegion: "New Jersey",
+        addressCountry: "US",
+      },
+    },
+  }
+
   return (
-    <div className="min-h-screen bg-pattern">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+      <div className="min-h-screen bg-pattern">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         <div className="container mx-auto px-4 py-4">
@@ -180,6 +215,7 @@ export default function AboutPage() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </>
   )
 }
